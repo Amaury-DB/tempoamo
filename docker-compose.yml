@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   db:
     image: postgres:13
@@ -12,7 +11,8 @@ services:
       - chouette-network
 
   chouette:
-    build: .
+    build:
+      context: .
     depends_on:
       - db
     environment:
