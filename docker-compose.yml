@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: chouette
+      POSTGRES_USER: chouette_user
+      POSTGRES_PASSWORD: chouette
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - chouette-network
+
+  chouette:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: "postgres://chouette_user:chouette@db:5432/chouette"
+    ports:
+      - "3000:3000"
+    networks:
+      - chouette-network
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+
+networks:
+  chouette-network:

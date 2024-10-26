@@ -1,70 +1,35 @@
-# Stages
-#
-# debian:stable-slim
-# -> base
-#   -> assets-builder
-#   -> final with COPY assets-builder/public/assets
+# Utiliser une image Ruby compatible (2.7)
+FROM ruby:2.7
 
-# Create a production image for Chouette
-#
-# Usage (minimalist) :
-# docker build -t chouette-core .
-# docker run --add-host "db:172.17.0.1" -e RAILS_DB_PASSWORD=chouette -p 3000:3000 -it chouette-core
+# Installer les packages requis pour la construction et l'exécution
+RUN apt-get update -qq && apt-get install -y \
+    build-essential \
+    libpq-dev libxml2-dev zlib1g-dev libmagic-dev libmagickwand-dev \
+    libproj-dev libgeos-dev libcurl4-openssl-dev \
+    libpq5 libxml2 zlib1g libmagic1 imagemagick \
+    libgeos-c1v5 libjemalloc2 libcurl4 \
+    nodejs yarn
 
-FROM ruby:2.7 AS base
-
+# Configurer le répertoire de travail
 WORKDIR /app
 
-# Install bundler packages
-COPY build.rc Gemfile Gemfile.lock ./
-RUN build.sh docker::bundler::install
+# Copier le code source dans le conteneur
+COPY . .
 
-FROM base AS assets-builder
+# Préparer l’environnement de production
+RUN if [ ! -f config/environments/production.rb ]; then \
+        cp config/environments/production.rb.sample config/environments/production.rb; \
+    fi
 
-RUN build.sh apt::install::yarn
+# Installer Bundler 2.4.22 et les gems
+RUN gem install bundler -v 2.4.22 && bundle install
 
-# Install yarn packages
-COPY package.json yarn.lock ./
-RUN build.sh yarn::install
+# Précompiler les assets
+RUN RUBYOPT="-W0" bundle exec rake ci:fix_webpacker assets:precompile i18n:js:export \
+    RAILS_DB_ADAPTER=nulldb RAILS_DB_PASSWORD=none RAILS_ENV=production NODE_OPTIONS=--openssl-legacy-provider
 
-# Install application file
-COPY . ./
-
-# Override database.yml and secrets.yml files
-COPY config/database.yml.docker config/database.yml
-COPY config/secrets.yml.docker config/secrets.yml
-RUN build.sh docker::env::production
-
-# Run assets:precompile
-ARG SENTRY_AUTH_TOKEN
-ARG VERSION
-RUN build.sh docker::assets::precompile
-
-FROM base AS final
-
-# Install application file
-COPY . ./
-
-# Override database.yml and secrets.yml files
-COPY config/database.yml.docker config/database.yml
-COPY config/secrets.yml.docker config/secrets.yml
-RUN build.sh docker::env::production
-
-COPY --from=assets-builder /app/public/assets/ public/assets/
-COPY --from=assets-builder /app/public/packs/ public/packs/
-
-# Create version.json file if VERSION is available
-ARG VERSION
-RUN build.sh docker::version
-
-RUN bundle exec bootsnap precompile --gemfile app/ lib/
-
-VOLUME /app/public/uploads
-
+# Exposer le port Rails
 EXPOSE 3000
-ENV RAILS_ENV=production RAILS_SERVE_STATIC_FILES=true RAILS_LOG_TO_STDOUT=true
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
-ENTRYPOINT ["./script/docker-entrypoint.sh"]
-# Use front by default. async and sync 'modes' are available
-CMD ["front"]
+# Démarrer le serveur Rails
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
