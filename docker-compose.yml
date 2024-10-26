@@ -13,6 +13,7 @@ services:
   chouette:
     build:
       context: .
+      dockerfile: Dockerfile
     depends_on:
       - db
     environment:
@@ -29,4 +30,3 @@ volumes:
 
 networks:
   chouette-network:
-  
